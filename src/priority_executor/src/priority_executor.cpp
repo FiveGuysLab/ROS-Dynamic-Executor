@@ -19,6 +19,8 @@
 #include "rclcpp/utilities.hpp"
 #include <memory>
 #include <sched.h>
+#include <fstream>
+#include <chrono>
 // for sleep
 #include <unistd.h>
 namespace timed_executor
@@ -29,6 +31,7 @@ namespace timed_executor
   {
     this->name = name;
     logger_ = create_logger();
+    timing_results.reserve(MAX_TIMING_RESULTS + 1);
   }
 
   TimedExecutor::~TimedExecutor() {}
@@ -142,8 +145,32 @@ namespace timed_executor
         throw std::runtime_error("Couldn't fill wait set");
       }
     }
+    
+    // Timing measurement - start
+    auto before_wait = std::chrono::steady_clock::now();
+    
     rcl_ret_t status =
         rcl_wait(&wait_set_, std::chrono::duration_cast<std::chrono::nanoseconds>(timeout).count());
+    
+    // Timing measurement - end
+    auto after_wait = std::chrono::steady_clock::now();
+    auto wait_duration = after_wait - before_wait;
+    const long duration_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(wait_duration).count();
+    
+    if (this->timing_results.size() < MAX_TIMING_RESULTS) {
+      // Store the wait duration in the timing results
+      this->timing_results.push_back(duration_ns);
+    } else if (this->timing_results.size() == MAX_TIMING_RESULTS) {
+      // Write to output file
+      std::ofstream logFile("/home/guy/test_logs/priority_executor_timing_results.txt");
+      for (int i = 0; i < MAX_TIMING_RESULTS; i++) {
+        logFile << this->timing_results.at(i) << std::endl;
+      }
+      logFile.close();
+      
+      this->timing_results.push_back(-1);
+    }
+    
     if (status == RCL_RET_WAIT_SET_EMPTY)
     {
       RCUTILS_LOG_WARN_NAMED(

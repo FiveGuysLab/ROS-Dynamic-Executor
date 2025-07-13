@@ -20,12 +20,17 @@
 #include <cassert>
 #include <cstdlib>
 #include <memory>
+#include <vector>
+#include <fstream>
+#include <chrono>
 
 #include "rclcpp/executor.hpp"
 #include "rclcpp/macros.hpp"
 #include "rclcpp/visibility_control.hpp"
 #include "priority_executor/priority_memory_strategy.hpp"
 #include <priority_executor/default_executor.hpp>
+
+#define MAX_TIMING_RESULTS 10000
 namespace timed_executor
 {
 
@@ -62,6 +67,9 @@ namespace timed_executor
 
     void set_use_priorities(bool use_prio);
     std::shared_ptr<PriorityMemoryStrategy<>> prio_memory_strategy_ = nullptr;
+    
+    // Timing results storage
+    std::vector<long> timing_results;
 
   protected:
     bool
