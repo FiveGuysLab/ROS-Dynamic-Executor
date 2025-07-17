@@ -95,33 +95,51 @@ namespace timed_executor
   void
   TimedExecutor::wait_for_work(std::chrono::nanoseconds timeout)
   {
-    {
-      std::unique_lock<std::mutex> lock(memory_strategy_mutex_);
-
-      // Collect the subscriptions and timers to be waited on
-      memory_strategy_->clear_handles();
-      bool has_invalid_weak_nodes = memory_strategy_->collect_entities(weak_nodes_);
-
-      // Clean up any invalid nodes, if they were detected
-      if (has_invalid_weak_nodes)
       {
-        auto node_it = weak_nodes_.begin();
-        auto gc_it = guard_conditions_.begin();
-        while (node_it != weak_nodes_.end())
-        {
-          if (node_it->expired())
-          {
-            node_it = weak_nodes_.erase(node_it);
-            memory_strategy_->remove_guard_condition(*gc_it);
-            gc_it = guard_conditions_.erase(gc_it);
-          }
-          else
-          {
-            ++node_it;
-            ++gc_it;
-          }
+    std::lock_guard<std::mutex> guard(mutex_);
+
+    // Check weak_nodes_ to find any callback group that is not owned
+    // by an executor and add it to the list of callbackgroups for
+    // collect entities. Also exchange to false so it is not
+    // allowed to add to another executor
+    add_callback_groups_from_nodes_associated_to_executor();
+
+    // Collect the subscriptions and timers to be waited on
+    memory_strategy_->clear_handles();
+    bool has_invalid_weak_groups_or_nodes =
+      memory_strategy_->collect_entities(weak_groups_to_nodes_);
+
+    if (has_invalid_weak_groups_or_nodes) {
+      std::vector<rclcpp::CallbackGroup::WeakPtr> invalid_group_ptrs;
+      for (auto pair : weak_groups_to_nodes_) {
+        auto weak_group_ptr = pair.first;
+        auto weak_node_ptr = pair.second;
+        if (weak_group_ptr.expired() || weak_node_ptr.expired()) {
+          invalid_group_ptrs.push_back(weak_group_ptr);
         }
       }
+      std::for_each(
+        invalid_group_ptrs.begin(), invalid_group_ptrs.end(),
+        [this](rclcpp::CallbackGroup::WeakPtr group_ptr) {
+          if (weak_groups_to_nodes_associated_with_executor_.find(group_ptr) !=
+          weak_groups_to_nodes_associated_with_executor_.end())
+          {
+            weak_groups_to_nodes_associated_with_executor_.erase(group_ptr);
+          }
+          if (weak_groups_associated_with_executor_to_nodes_.find(group_ptr) !=
+          weak_groups_associated_with_executor_to_nodes_.end())
+          {
+            weak_groups_associated_with_executor_to_nodes_.erase(group_ptr);
+          }
+          auto callback_guard_pair = weak_groups_to_guard_conditions_.find(group_ptr);
+          if (callback_guard_pair != weak_groups_to_guard_conditions_.end()) {
+            auto guard_condition = callback_guard_pair->second;
+            weak_groups_to_guard_conditions_.erase(group_ptr);
+            memory_strategy_->remove_guard_condition(guard_condition);
+          }
+          weak_groups_to_nodes_.erase(group_ptr);
+        });
+    }
       // clear wait set
       rcl_ret_t ret = rcl_wait_set_clear(&wait_set_);
       if (ret != RCL_RET_OK)
@@ -194,7 +212,7 @@ namespace timed_executor
     if (use_priorities)
     {
       std::shared_ptr<PriorityMemoryStrategy<>> strat = std::dynamic_pointer_cast<PriorityMemoryStrategy<>>(memory_strategy_);
-      strat->get_next_executable(any_executable, weak_nodes_);
+      strat->get_next_executable(any_executable, weak_groups_to_nodes_);
       if (any_executable.timer || any_executable.subscription || any_executable.service || any_executable.client || any_executable.waitable)
       {
         success = true;
@@ -203,7 +221,7 @@ namespace timed_executor
     else
     {
       // Check the timers to see if there are any that are ready
-      memory_strategy_->get_next_timer(any_executable, weak_nodes_);
+      memory_strategy_->get_next_timer(any_executable, weak_groups_to_nodes_);
       if (any_executable.timer)
       {
         std::cout << "got timer" << std::endl;
@@ -212,7 +230,7 @@ namespace timed_executor
       if (!success)
       {
         // Check the subscriptions to see if there are any that are ready
-        memory_strategy_->get_next_subscription(any_executable, weak_nodes_);
+        memory_strategy_->get_next_subscription(any_executable, weak_groups_to_nodes_);
         if (any_executable.subscription)
         {
           // std::cout << "got subs" << std::endl;
@@ -222,7 +240,7 @@ namespace timed_executor
       if (!success)
       {
         // Check the services to see if there are any that are ready
-        memory_strategy_->get_next_service(any_executable, weak_nodes_);
+        memory_strategy_->get_next_service(any_executable, weak_groups_to_nodes_);
         if (any_executable.service)
         {
           std::cout << "got serv" << std::endl;
@@ -232,7 +250,7 @@ namespace timed_executor
       if (!success)
       {
         // Check the clients to see if there are any that are ready
-        memory_strategy_->get_next_client(any_executable, weak_nodes_);
+        memory_strategy_->get_next_client(any_executable, weak_groups_to_nodes_);
         if (any_executable.client)
         {
           std::cout << "got client" << std::endl;
@@ -242,7 +260,7 @@ namespace timed_executor
       if (!success)
       {
         // Check the waitables to see if there are any that are ready
-        memory_strategy_->get_next_waitable(any_executable, weak_nodes_);
+        memory_strategy_->get_next_waitable(any_executable, weak_groups_to_nodes_);
         if (any_executable.waitable)
         {
           std::cout << "got wait" << std::endl;
@@ -256,7 +274,6 @@ namespace timed_executor
     {
       // If it is valid, check to see if the group is mutually exclusive or
       // not, then mark it accordingly
-      using rclcpp::callback_group::CallbackGroupType;
       if (
           any_executable.callback_group &&
           any_executable.callback_group->type() == rclcpp::CallbackGroupType::MutuallyExclusive)

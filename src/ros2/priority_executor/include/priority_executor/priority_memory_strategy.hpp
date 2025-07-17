@@ -30,6 +30,8 @@
 
 #include "simple_timer/rt-sched.hpp"
 
+using WeakNodeList = rclcpp::memory_strategy::MemoryStrategy::WeakCallbackGroupsToNodesMap;
+
 /// Delegate for handling memory allocations while the Executor is executing.
 /**
  * By default, the memory strategy dynamically allocates memory for structures
@@ -145,10 +147,10 @@ public:
   node_time_logger logger_;
 
   void
-  add_guard_condition(const rcl_guard_condition_t *guard_condition) override;
+  add_guard_condition(const rclcpp::GuardCondition & guard_condition) override;
 
   void
-  remove_guard_condition(const rcl_guard_condition_t *guard_condition) override;
+  remove_guard_condition(const rclcpp::GuardCondition * guard_condition) override;
 
   void clear_handles() override;
 
@@ -370,7 +372,7 @@ private:
   using VectorRebind = std::vector<
       T, typename std::allocator_traits<Alloc>::template rebind_alloc<T>>;
 
-  VectorRebind<const rcl_guard_condition_t *> guard_conditions_;
+  VectorRebind<const rclcpp::GuardCondition *> guard_conditions_;
 
   VectorRebind<std::shared_ptr<const rcl_subscription_t>> subscription_handles_;
   VectorRebind<std::shared_ptr<const rcl_service_t>> service_handles_;

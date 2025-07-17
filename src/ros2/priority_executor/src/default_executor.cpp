@@ -28,31 +28,49 @@ ROSDefaultExecutor::~ROSDefaultExecutor() {}
 void ROSDefaultExecutor::wait_for_work(std::chrono::nanoseconds timeout)
 {
   {
-    std::unique_lock<std::mutex> lock(memory_strategy_mutex_);
+    std::lock_guard<std::mutex> guard(mutex_);
+
+    // Check weak_nodes_ to find any callback group that is not owned
+    // by an executor and add it to the list of callbackgroups for
+    // collect entities. Also exchange to false so it is not
+    // allowed to add to another executor
+    add_callback_groups_from_nodes_associated_to_executor();
 
     // Collect the subscriptions and timers to be waited on
     memory_strategy_->clear_handles();
-    bool has_invalid_weak_nodes = memory_strategy_->collect_entities(weak_nodes_);
+    bool has_invalid_weak_groups_or_nodes =
+      memory_strategy_->collect_entities(weak_groups_to_nodes_);
 
-    // Clean up any invalid nodes, if they were detected
-    if (has_invalid_weak_nodes)
-    {
-      auto node_it = weak_nodes_.begin();
-      auto gc_it = guard_conditions_.begin();
-      while (node_it != weak_nodes_.end())
-      {
-        if (node_it->expired())
-        {
-          node_it = weak_nodes_.erase(node_it);
-          memory_strategy_->remove_guard_condition(*gc_it);
-          gc_it = guard_conditions_.erase(gc_it);
-        }
-        else
-        {
-          ++node_it;
-          ++gc_it;
+    if (has_invalid_weak_groups_or_nodes) {
+      std::vector<rclcpp::CallbackGroup::WeakPtr> invalid_group_ptrs;
+      for (auto pair : weak_groups_to_nodes_) {
+        auto weak_group_ptr = pair.first;
+        auto weak_node_ptr = pair.second;
+        if (weak_group_ptr.expired() || weak_node_ptr.expired()) {
+          invalid_group_ptrs.push_back(weak_group_ptr);
         }
       }
+      std::for_each(
+        invalid_group_ptrs.begin(), invalid_group_ptrs.end(),
+        [this](rclcpp::CallbackGroup::WeakPtr group_ptr) {
+          if (weak_groups_to_nodes_associated_with_executor_.find(group_ptr) !=
+          weak_groups_to_nodes_associated_with_executor_.end())
+          {
+            weak_groups_to_nodes_associated_with_executor_.erase(group_ptr);
+          }
+          if (weak_groups_associated_with_executor_to_nodes_.find(group_ptr) !=
+          weak_groups_associated_with_executor_to_nodes_.end())
+          {
+            weak_groups_associated_with_executor_to_nodes_.erase(group_ptr);
+          }
+          auto callback_guard_pair = weak_groups_to_guard_conditions_.find(group_ptr);
+          if (callback_guard_pair != weak_groups_to_guard_conditions_.end()) {
+            auto guard_condition = callback_guard_pair->second;
+            weak_groups_to_guard_conditions_.erase(group_ptr);
+            memory_strategy_->remove_guard_condition(guard_condition);
+          }
+          weak_groups_to_nodes_.erase(group_ptr);
+        });
     }
     // clear wait set
     rcl_ret_t ret = rcl_wait_set_clear(&wait_set_);

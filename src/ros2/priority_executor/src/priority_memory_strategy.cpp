@@ -119,18 +119,18 @@ bool PriorityExecutableComparator::operator()(const PriorityExecutable *p1,
 
 template <>
 void PriorityMemoryStrategy<>::add_guard_condition(
-    const rcl_guard_condition_t *guard_condition) {
+    const rclcpp::GuardCondition & guard_condition) {
   for (const auto &existing_guard_condition : guard_conditions_) {
-    if (existing_guard_condition == guard_condition) {
+    if (existing_guard_condition == &guard_condition) {
       return;
     }
   }
-  guard_conditions_.push_back(guard_condition);
+  guard_conditions_.push_back(&guard_condition);
 }
 
 template <>
 void PriorityMemoryStrategy<>::remove_guard_condition(
-    const rcl_guard_condition_t *guard_condition) {
+    const rclcpp::GuardCondition * guard_condition) {
   for (auto it = guard_conditions_.begin(); it != guard_conditions_.end();
        ++it) {
     if (*it == guard_condition) {
@@ -238,55 +238,47 @@ bool PriorityMemoryStrategy<>::collect_entities(
     const WeakNodeList &weak_nodes) {
 
   bool has_invalid_weak_nodes = false;
-  for (auto &weak_node : weak_nodes) {
-    auto node = weak_node.lock();
-    if (!node) {
+  for (auto &pair : weak_nodes) {
+    auto group = pair.first.lock();
+    auto node = pair.second.lock();
+    if (group == nullptr || node == nullptr) {
       has_invalid_weak_nodes = true;
       continue;
     }
-    for (auto &weak_group : node->get_callback_groups()) {
-      auto group = weak_group.lock();
-      if (!group)
-      // if (!group || !group->can_be_taken_from().load())
-      {
-        continue;
-      }
-      group->find_subscription_ptrs_if(
-          [this](const rclcpp::SubscriptionBase::SharedPtr &subscription) {
-            auto subscription_handle = subscription->get_subscription_handle();
-            subscription_handles_.push_back(subscription_handle);
-            add_executable_to_queue(
-                get_and_reset_priority(subscription_handle, SUBSCRIPTION));
-            return false;
-          });
-      group->find_service_ptrs_if(
-          [this](const rclcpp::ServiceBase::SharedPtr &service) {
-            add_executable_to_queue(
-                get_and_reset_priority(service->get_service_handle(), SERVICE));
-            service_handles_.push_back(service->get_service_handle());
-            return false;
-          });
-      group->find_client_ptrs_if(
-          [this](const rclcpp::ClientBase::SharedPtr &client) {
-            add_executable_to_queue(
-                get_and_reset_priority(client->get_client_handle(), CLIENT));
-            client_handles_.push_back(client->get_client_handle());
-            return false;
-          });
-      group->find_timer_ptrs_if(
-          [this](const rclcpp::TimerBase::SharedPtr &timer) {
-            add_executable_to_queue(
-                get_and_reset_priority(timer->get_timer_handle(), TIMER));
-            timer_handles_.push_back(timer->get_timer_handle());
-            return false;
-          });
-      group->find_waitable_ptrs_if(
-          [this](const rclcpp::Waitable::SharedPtr &waitable) {
-            add_executable_to_queue(get_and_reset_priority(waitable, WAITABLE));
-            waitable_handles_.push_back(waitable);
-            return false;
-          });
+
+    if (!group || !group->can_be_taken_from().load()) {
+      continue;
     }
+
+    group->collect_all_ptrs(
+      [this](const rclcpp::SubscriptionBase::SharedPtr & subscription) {
+        auto subscription_handle = subscription->get_subscription_handle();
+        subscription_handles_.push_back(subscription_handle);
+        add_executable_to_queue(
+          get_and_reset_priority(subscription_handle, SUBSCRIPTION));
+      },
+      [this](const rclcpp::ServiceBase::SharedPtr & service) {
+        auto service_handle = service->get_service_handle();
+        add_executable_to_queue(
+          get_and_reset_priority(service_handle, SERVICE));
+        service_handles_.push_back(service_handle);
+      },
+      [this](const rclcpp::ClientBase::SharedPtr & client) {
+        auto client_handle = client->get_client_handle();
+        add_executable_to_queue(
+          get_and_reset_priority(client_handle, CLIENT));
+        client_handles_.push_back(client_handle);
+      },
+      [this](const rclcpp::TimerBase::SharedPtr & timer) {
+        auto timer_handle = timer->get_timer_handle();
+        add_executable_to_queue(
+          get_and_reset_priority(timer_handle, TIMER));
+        timer_handles_.push_back(timer_handle);
+      },
+      [this](const rclcpp::Waitable::SharedPtr & waitable) {
+        add_executable_to_queue(get_and_reset_priority(waitable, WAITABLE));
+        waitable_handles_.push_back(waitable);
+    });
   }
   return has_invalid_weak_nodes;
 }
@@ -339,21 +331,12 @@ bool PriorityMemoryStrategy<>::add_handles_to_wait_set(
   }
 
   for (auto guard_condition : guard_conditions_) {
-    if (rcl_wait_set_add_guard_condition(wait_set, guard_condition, NULL) !=
-        RCL_RET_OK) {
-      RCUTILS_LOG_ERROR_NAMED("rclcpp",
-                              "Couldn't add guard_condition to wait set: %s",
-                              rcl_get_error_string().str);
-      return false;
-    }
+    auto _guard_condition = const_cast<rclcpp::GuardCondition *>(guard_condition);
+    _guard_condition->add_to_wait_set(wait_set);
   }
 
   for (auto waitable : waitable_handles_) {
-    if (!waitable->add_to_wait_set(wait_set)) {
-      RCUTILS_LOG_ERROR_NAMED("rclcpp", "Couldn't add waitable to wait set: %s",
-                              rcl_get_error_string().str);
-      return false;
-    }
+    waitable->add_to_wait_set(wait_set);
   }
   return true;
 }
