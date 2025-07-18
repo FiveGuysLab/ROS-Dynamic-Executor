@@ -22,7 +22,7 @@ ROSDefaultExecutor::ROSDefaultExecutor(const rclcpp::ExecutorOptions &options)
     : rclcpp::Executor(options)
 {
   logger_ = create_logger();
-  timing_results.reserve(MAX_TIMING_RESULTS + 1);
+  rtis_timing_results.reserve(MAX_TIMING_RESULTS + 1);
 }
 
 ROSDefaultExecutor::~ROSDefaultExecutor() {}
@@ -105,18 +105,18 @@ void ROSDefaultExecutor::wait_for_work(std::chrono::nanoseconds timeout)
   auto after_wait = std::chrono::steady_clock::now();
   auto wait_duration = after_wait - before_wait;
   const long duration_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(wait_duration).count();
-  if (this->timing_results.size() < MAX_TIMING_RESULTS) {
+  if (this->rtis_timing_results.size() < MAX_TIMING_RESULTS) {
     // Store the wait duration in the timing results
-    this->timing_results.push_back(duration_ns);
-  } else if (this->timing_results.size() == MAX_TIMING_RESULTS) {
+    this->rtis_timing_results.push_back(duration_ns);
+  } else if (this->rtis_timing_results.size() == MAX_TIMING_RESULTS) {
     // Write to output file
     std::ofstream logFile("/home/guy/test_logs/executor_timing_results.txt");
     for (int i = 0; i < MAX_TIMING_RESULTS; i++) {
-      logFile << this->timing_results.at(i) << std::endl;
+      logFile << this->rtis_timing_results.at(i) << std::endl;
     }
     logFile.close();
 
-    this->timing_results.push_back(-1);
+    this->rtis_timing_results.push_back(-1);
   }
   if (status == RCL_RET_WAIT_SET_EMPTY)
   {

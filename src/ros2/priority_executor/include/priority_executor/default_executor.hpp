@@ -30,13 +30,15 @@
 #include "rclcpp/detail/mutex_two_priorities.hpp"
 #include "simple_timer/rt-sched.hpp"
 
+#ifndef MAX_TIMING_RESULTS
 #define MAX_TIMING_RESULTS 1000000
+#endif
 
 class RTISTimed
 {
 public:
   node_time_logger logger_;
-  std::vector<long> timing_results;
+  std::vector<long> rtis_timing_results;
 };
 
 class ROSDefaultMultithreadedExecutor : public rclcpp::Executor, public RTISTimed
