@@ -49,7 +49,7 @@ bool PriorityExecutable::operator==(const PriorityExecutable &other) const {
 }
 
 bool PriorityExecutableComparator::operator()(const PriorityExecutable *p1,
-                                              const PriorityExecutable *p2) {
+                                              const PriorityExecutable *p2) const {
   // since this will be used in a std::set, also check for equality
   if (p1 == nullptr || p2 == nullptr) {
     // TODO: realistic value

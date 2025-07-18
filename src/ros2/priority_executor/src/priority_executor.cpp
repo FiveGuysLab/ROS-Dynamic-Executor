@@ -15,7 +15,7 @@
 #include "priority_executor/priority_executor.hpp"
 #include "priority_executor/priority_memory_strategy.hpp"
 #include "rclcpp/any_executable.hpp"
-#include "rclcpp/scope_exit.hpp"
+#include "rcpputils/scope_exit.hpp"
 #include "rclcpp/utilities.hpp"
 #include <memory>
 #include <sched.h>
@@ -43,7 +43,7 @@ namespace timed_executor
     {
       throw std::runtime_error("spin() called while already spinning");
     }
-    RCLCPP_SCOPE_EXIT(this->spinning.store(false););
+    RCPPUTILS_SCOPE_EXIT(this->spinning.store(false));
     while (rclcpp::ok(this->context_) && spinning.load())
     {
       rclcpp::AnyExecutable any_executable;

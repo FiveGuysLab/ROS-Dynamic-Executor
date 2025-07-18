@@ -120,7 +120,7 @@ public:
 class PriorityExecutableComparator
 {
 public:
-  bool operator()(const PriorityExecutable *p1, const PriorityExecutable *p2);
+  bool operator()(const PriorityExecutable *p1, const PriorityExecutable *p2) const;
 };
 
 template <typename Alloc = std::allocator<void>>
