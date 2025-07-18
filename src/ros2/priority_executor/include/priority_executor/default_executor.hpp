@@ -18,9 +18,11 @@
 #include <rmw/rmw.h>
 
 #include <cassert>
+#include <chrono>
 #include <cstdlib>
 #include <memory>
 #include <set>
+#include <vector>
 
 #include "rclcpp/executor.hpp"
 #include "rclcpp/macros.hpp"
@@ -28,10 +30,13 @@
 #include "rclcpp/detail/mutex_two_priorities.hpp"
 #include "simple_timer/rt-sched.hpp"
 
+#define MAX_TIMING_RESULTS 1000000
+
 class RTISTimed
 {
 public:
   node_time_logger logger_;
+  std::vector<long> timing_results;
 };
 
 class ROSDefaultMultithreadedExecutor : public rclcpp::Executor, public RTISTimed
