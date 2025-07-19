@@ -115,6 +115,7 @@ void ROSDefaultExecutor::wait_for_work(std::chrono::nanoseconds timeout)
       logFile << this->rtis_timing_results.at(i) << std::endl;
     }
     logFile.close();
+    exit(0);
 
     this->rtis_timing_results.push_back(-1);
   }

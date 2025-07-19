@@ -180,11 +180,12 @@ namespace timed_executor
       this->timing_results.push_back(duration_ns);
     } else if (this->timing_results.size() == MAX_TIMING_RESULTS) {
       // Write to output file
-      std::ofstream logFile("/home/guy/test_logs/priority_executor_timing_results.txt");
+      std::ofstream logFile("/home/guy/test_logs/executor_timing_results.txt");
       for (int i = 0; i < MAX_TIMING_RESULTS; i++) {
         logFile << this->timing_results.at(i) << std::endl;
       }
       logFile.close();
+      exit(0);
       
       this->timing_results.push_back(-1);
     }
