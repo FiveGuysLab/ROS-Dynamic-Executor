@@ -30,7 +30,9 @@
 #include "priority_executor/priority_memory_strategy.hpp"
 #include <priority_executor/default_executor.hpp>
 
+#ifndef MAX_TIMING_RESULTS
 #define MAX_TIMING_RESULTS 10000
+#endif
 namespace timed_executor
 {
 
